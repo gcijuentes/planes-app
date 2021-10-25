@@ -6,6 +6,8 @@ use App\Http\Resources\PlanResource;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Plan;
+use App\Models\Factor;
+
 use App\Http\Controllers\ControllerBase;
 use App\Models\Cobertura;
 use Illuminate\Database\QueryException;
@@ -30,19 +32,64 @@ class PlanesController extends ControllerBase
     public function index(Request $request)
     {
 
-
+        DB::connection()->enableQueryLog();
         $planesList = Plan::with('prestadores','coberturas','archivo','isapre','isapre.archivo');
+
+
+        if(null != $request->query('checkCerrado')){ // 1
+            $planesList->orWhere('idTipoPlan','=','1');
+        }
+
+        if(null != $request->query('checkLibreEleccion')){ // 2
+            $planesList->orWhere('idTipoPlan','=','2');
+        }
+
+        if(null != $request->query('checkPreferente')){ // 3
+            $planesList->orWhere('idTipoPlan','=','3');
+        }
+
+        //isapres
+        if(null != $request->query('isapres')){
+            //print_r(explode(',',$request->query('isapres')));
+            //exit(1);
+            $isapresArray = explode(',',$request->query('isapres'));
+            $order = [5];
+
+            //print_r( $isapresArray);
+            //exit(1);
+            $planesList->WhereIn('isapre_id',$isapresArray);
+        }
+
 
         $precioDesde = $request->query('precioDesde');
         $precioHasta = $request->query('precioHasta');
 
         $edades = $request->query('edades');
         $isCargas = $request->query('isCargas');
-        //print_r($isCargas);
+
+        $edadesArray = explode(",", $edades);
+        $isCargasArray = explode(",", $isCargas);
+
+        $index = 0;
+        $factorFinal = 0;
+        foreach ($edadesArray as $edad) {
+            $isCargaText=($isCargasArray[$index]==='true')?'carga':'cotizante';
+            $factorEntity = Factor::where('edad_desde', '<=', $edad)
+            ->where('edad_hasta', '>=', $edad)
+            ->where('tipo', '=', $isCargaText)
+            ->firstOrFail();
+            $factorFinal+= $factorEntity->factor;
+            $index++;
+
+        }
+
+
+        //print_r($factorFinal);
         //exit(1);
+        //$factorEntity = Factor::where('edades', '=', $value)->firstOrFail();
+
         // ya tenemos el array de edades y si es carga, falta hacer los calculos para filtrar
         //hay que basarse en el excel que envio marcelo
-
 
         $curl = curl_init();
         $opts = array('http' =>
@@ -51,10 +98,6 @@ class PlanesController extends ControllerBase
                     'timeout' => 55
                 )
          );
-
-
-
-
 
         $context  = stream_context_create($opts);
         $jsonUF= file_get_contents('https://mindicador.cl/api',false,$context );
@@ -74,15 +117,21 @@ class PlanesController extends ControllerBase
         $planesListFinal = [];
         $planes = $planesList->paginate(1500);
 
+        $queries = DB::getQueryLog();
+        $last_query = end($queries);
+        print_r( $last_query);
+            exit(1);
+
+
         $i = 0;
         foreach ($planes as $key) {
+            $gesFinal = $key->ges * $index;
 
-
-            $valorPesos = ($key->valor_base_uf * $valorUf) + ($key->ges * $valorUf);
-
-                 //print_r($valorPesos);
-                // print_r('----');
-                // print_r($precioHasta);
+            $valorPesos= (($key->valor_base_uf * $factorFinal ) + $gesFinal ) * $valorUf;
+            /*if($key->codigo == 'ADRP16120'){
+                print_r($valorPesos);
+                exit(1);
+            }*/
 
             if($precioDesde!='' && $precioHasta!='' ){
                  if($valorPesos<=$precioHasta && $valorPesos>= $precioDesde ){
