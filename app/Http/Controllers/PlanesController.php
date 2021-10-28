@@ -32,10 +32,10 @@ class PlanesController extends ControllerBase
     public function index(Request $request)
     {
 
-        DB::connection()->enableQueryLog();
+
         $planesList = Plan::with('prestadores','coberturas','archivo','isapre','isapre.archivo');
 
-
+        /*
         if(null != $request->query('checkCerrado')){ // 1
             $planesList->orWhere('idTipoPlan','=','1');
         }
@@ -46,19 +46,19 @@ class PlanesController extends ControllerBase
 
         if(null != $request->query('checkPreferente')){ // 3
             $planesList->orWhere('idTipoPlan','=','3');
+        }*/
+
+        if(null != $request->query('tipoPlan')){
+            $tipoPlan = explode(',',$request->query('tipoPlan'));
+            $planesList->WhereIn('idTipoPlan',$tipoPlan);
         }
 
         //isapres
         if(null != $request->query('isapres')){
-            //print_r(explode(',',$request->query('isapres')));
-            //exit(1);
             $isapresArray = explode(',',$request->query('isapres'));
-            $order = [5];
-
-            //print_r( $isapresArray);
-            //exit(1);
             $planesList->WhereIn('isapre_id',$isapresArray);
         }
+
 
 
         $precioDesde = $request->query('precioDesde');
@@ -114,13 +114,13 @@ class PlanesController extends ControllerBase
             $planesList = $planesList->where('valor_base_uf', '<=', $precioHastaUF);
         }*/
 
+        DB::connection()->enableQueryLog();
         $planesListFinal = [];
         $planes = $planesList->paginate(1500);
 
         $queries = DB::getQueryLog();
         $last_query = end($queries);
-        print_r( $last_query);
-            exit(1);
+
 
 
         $i = 0;
